@@ -25,7 +25,8 @@ jobs:
             mkdir -p /layer/python
 
             # Install Playwright Core only (no extra browsers)
-            python3 -m pip install playwright-core==1.41.2 -t /layer/python
+            python3 -m pip install playwright==1.41.2 -t /layer/python
+
 
             # Remove unnecessary files to reduce size
             cd /layer/python
