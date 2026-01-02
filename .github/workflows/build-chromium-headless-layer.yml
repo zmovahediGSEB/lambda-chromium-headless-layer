@@ -1,0 +1,55 @@
+name: Build Headless Chrome Lambda Layer
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Checkout repo
+      uses: actions/checkout@v4
+
+    - name: Build headless Chrome
+      run: |
+        docker run --rm -v "$PWD:/work" amazonlinux:2 bash -ex << 'EOF'
+        
+          # Prepare
+          yum update -y
+          yum install -y \
+            zip unzip tar gzip gcc-c++ make \
+            alsa-lib-devel atk-devel cups-libs gtk3-devel \
+            ipa-gothic-fonts liberation-fonts \
+            libXcomposite-devel libXcursor-devel \
+            libXdamage-devel libXext-devel libXi-devel \
+            libXrandr-devel libXScrnSaver-devel nss \
+            pango-devel
+
+          mkdir -p /work/layer/bin
+          cd /work/layer
+
+          # Download prebuilt headless Chromium (AWS Lambda compatible)
+          CHROME_URL="https://github.com/alixaxel/chrome-aws-lambda/releases/latest/download/chrome-linux.zip"
+          curl -Lo chrome-linux.zip "$CHROME_URL"
+          unzip chrome-linux.zip -d bin
+
+          # Strip binaries to reduce size
+          find bin -type f -executable -exec strip --strip-unneeded {} + || true
+
+          # Remove unused parts
+          rm -rf bin/chrome-linux/locales \
+                 bin/chrome-linux/swiftshader/icudtl.dat
+
+          # Create final layer zip
+          cd /work/layer
+          zip -9 -r /work/headless-chrome-layer.zip .
+        EOF
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: headless-chrome-layer
+        path: headless-chrome-layer.zip
