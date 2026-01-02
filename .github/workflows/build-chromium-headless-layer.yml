@@ -1,4 +1,4 @@
-name: Build Playwright Lambda Layer with Headless Chromium
+name: Build Python Playwright + Chromium Lambda Layer
 
 on:
   workflow_dispatch:
@@ -13,77 +13,76 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build Playwright Lambda layer
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip brotli zip curl jq tar
+
+      - name: Download latest Sparticuz Chromium release
+        run: |
+          # Get latest release info from GitHub API
+          RELEASE_JSON=$(curl -s https://api.github.com/repos/Sparticuz/chromium/releases/latest)
+          
+          # Extract download URL for x64 ZIP layer
+          CHROME_ZIP_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("layer\\.x64\\.zip$")) | .browser_download_url')
+          
+          echo "Downloading Chromium layer from $CHROME_ZIP_URL"
+          curl -L -o /tmp/chromium.zip "$CHROME_ZIP_URL"
+
+      - name: Extract and decompress Chromium + Fonts
+        run: |
+          mkdir -p /layer/bin /layer/fonts
+
+          unzip /tmp/chromium.zip -d /tmp/chromium
+
+          # Decompress chromium.br
+          CHROME_BR=$(find /tmp/chromium -name "chromium.br" | head -n1)
+          brotli -d "$CHROME_BR" -o /layer/bin/chrome
+          chmod +x /layer/bin/chrome
+
+          # Decompress fonts.tar.br
+          FONTS_BR=$(find /tmp/chromium -name "fonts.tar.br" | head -n1)
+          brotli -d "$FONTS_BR" -o /layer/fonts/fonts.tar
+          tar -xf /layer/fonts/fonts.tar -C /layer/fonts
+          rm /layer/fonts/fonts.tar
+
+          # Optional: decompress SwiftShader if needed
+          SWIFT_BR=$(find /tmp/chromium -name "swiftshader.tar.br" | head -n1 || true)
+          if [ -n "$SWIFT_BR" ]; then
+            mkdir -p /layer/swiftshader
+            brotli -d "$SWIFT_BR" -o /layer/swiftshader/swiftshader.tar
+            tar -xf /layer/swiftshader/swiftshader.tar -C /layer/swiftshader
+            rm /layer/swiftshader/swiftshader.tar
+          fi
+
+      - name: Build Playwright Python Lambda layer
         run: |
           docker run --rm -v "$PWD:/work" python:3.10-slim bash -c '
             set -ex
-
-            # Install system dependencies
-            apt-get update
-            apt-get install -y zip unzip && apt-get clean
-      
-            # Prepare Lambda layer directory
+            apt-get update && apt-get install -y zip unzip && apt-get clean
             mkdir -p /layer/python
-
-            # Install Python dependencies
             python3 -m pip install --upgrade pip
-
-            # Prepare Lambda layer directory
-            mkdir -p /layer/python
-
-            # Install Playwright Core only (no extra browsers)
             python3 -m pip install playwright==1.41.2 -t /layer/python
-
-
-            # Remove unnecessary files to reduce size
             cd /layer/python
             rm -rf tests examples docs
             find . -name "__pycache__" -type d -exec rm -rf {} +
-
-            # Zip the Playwright layer
             cd /layer
-            zip -9 -r /work/playwright-layer.zip .
+            zip -9 -r /work/playwright-layer.zip python
           '
 
-      - name: Build Headless Chromium Lambda layer
+      - name: Build Chromium Lambda layer
         run: |
-          docker run --rm -v "$PWD:/work" ubuntu:22.04 bash -c '
-            set -ex
-
-            apt-get update && apt-get install -y curl unzip zip \
-              libx11-6 libxcomposite1 libxcursor1 libxdamage1 libxext6 \
-              libxi6 libxrandr2 libxss1 libxtst6 libcups2 libasound2 \
-              libatk1.0-0 libgtk-3-0 libpango-1.0-0 libgl1 libnss3 fonts-dejavu-core \
-              && apt-get clean
-
-            # Prepare Lambda layer folder
-            mkdir -p /layer/bin
-
-            # Download prebuilt minimal Chrome for AWS Lambda
-            CHROME_URL="https://github.com/alixaxel/chrome-aws-lambda/releases/latest/download/chrome-linux.zip"
-            curl -Lo /tmp/chrome-linux.zip "$CHROME_URL"
-            unzip /tmp/chrome-linux.zip -d /layer/bin
-
-            # Strip binaries to reduce size
-            find /layer/bin -type f -executable -exec strip --strip-unneeded {} + || true
-
-            # Remove unused files
-            rm -rf /layer/bin/chrome-linux/locales
-            rm -rf /layer/bin/chrome-linux/swiftshader/icudtl.dat
-
-            # Zip the headless Chromium layer
-            cd /layer
-            zip -9 -r /work/headless-chrome-layer.zip .
-          '
+          cd /layer
+          zip -9 -r /work/headless-chrome-layer.zip bin fonts swiftshader || true
 
       - name: Upload Playwright layer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-lambda-layer
+          name: playwright-layer
           path: playwright-layer.zip
 
-      - name: Upload Headless Chromium layer artifact
+      - name: Upload Chromium layer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: headless-chrome-lambda-layer
+          name: chromium-layer
           path: headless-chrome-layer.zip
