@@ -63,9 +63,6 @@ jobs:
             mkdir -p /work/layer/python
             python3 -m pip install --upgrade pip
             python3 -m pip install playwright==1.41.2 -t /work/layer/python
-            cd /work/layer/python
-            rm -rf tests examples docs
-            find . -name "__pycache__" -type d -exec rm -rf {} +
             cd /work/layer
             zip -9 -r /work/playwright-layer.zip python
           '
