@@ -31,48 +31,48 @@ jobs:
 
       - name: Extract and decompress Chromium + Fonts
         run: |
-          mkdir -p /layer/bin /layer/fonts
+          mkdir -p /work/layer/bin /work/layer/fonts
 
           unzip /tmp/chromium.zip -d /tmp/chromium
 
           # Decompress chromium.br
           CHROME_BR=$(find /tmp/chromium -name "chromium.br" | head -n1)
-          brotli -d "$CHROME_BR" -o /layer/bin/chrome
-          chmod +x /layer/bin/chrome
+          brotli -d "$CHROME_BR" -o /work/layer/bin/chrome
+          chmod +x /work/layer/bin/chrome
 
           # Decompress fonts.tar.br
           FONTS_BR=$(find /tmp/chromium -name "fonts.tar.br" | head -n1)
-          brotli -d "$FONTS_BR" -o /layer/fonts/fonts.tar
-          tar -xf /layer/fonts/fonts.tar -C /layer/fonts
-          rm /layer/fonts/fonts.tar
+          brotli -d "$FONTS_BR" -o /work/layer/fonts/fonts.tar
+          tar -xf /work/layer/fonts/fonts.tar -C /work/layer/fonts
+          rm /work/layer/fonts/fonts.tar
 
-          # Optional: decompress SwiftShader if needed
+          # Optional: decompress SwiftShader
           SWIFT_BR=$(find /tmp/chromium -name "swiftshader.tar.br" | head -n1 || true)
           if [ -n "$SWIFT_BR" ]; then
-            mkdir -p /layer/swiftshader
-            brotli -d "$SWIFT_BR" -o /layer/swiftshader/swiftshader.tar
-            tar -xf /layer/swiftshader/swiftshader.tar -C /layer/swiftshader
-            rm /layer/swiftshader/swiftshader.tar
+            mkdir -p /work/layer/swiftshader
+            brotli -d "$SWIFT_BR" -o /work/layer/swiftshader/swiftshader.tar
+            tar -xf /work/layer/swiftshader/swiftshader.tar -C /work/layer/swiftshader
+            rm /work/layer/swiftshader/swiftshader.tar
           fi
 
-      - name: Build Playwright Python Lambda layer
+      - name: Build Python Playwright Lambda layer
         run: |
           docker run --rm -v "$PWD:/work" python:3.10-slim bash -c '
             set -ex
             apt-get update && apt-get install -y zip unzip && apt-get clean
-            mkdir -p /layer/python
+            mkdir -p /work/layer/python
             python3 -m pip install --upgrade pip
-            python3 -m pip install playwright==1.41.2 -t /layer/python
-            cd /layer/python
+            python3 -m pip install playwright==1.41.2 -t /work/layer/python
+            cd /work/layer/python
             rm -rf tests examples docs
             find . -name "__pycache__" -type d -exec rm -rf {} +
-            cd /layer
+            cd /work/layer
             zip -9 -r /work/playwright-layer.zip python
           '
 
       - name: Build Chromium Lambda layer
         run: |
-          cd /layer
+          cd /work/layer
           zip -9 -r /work/headless-chrome-layer.zip bin fonts swiftshader || true
 
       - name: Upload Playwright layer artifact
