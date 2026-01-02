@@ -18,6 +18,13 @@ jobs:
           docker run --rm -v "$PWD:/work" python:3.10-slim bash -c '
             set -ex
 
+            # Install system dependencies
+            apt-get update
+            apt-get install -y zip unzip && apt-get clean
+      
+            # Prepare Lambda layer directory
+            mkdir -p /layer/python
+
             # Install Python dependencies
             python3 -m pip install --upgrade pip
 
