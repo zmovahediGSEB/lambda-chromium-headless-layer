@@ -63,8 +63,7 @@ jobs:
             mkdir -p /work/layer/python
             python3 -m pip install --upgrade pip
             python3 -m pip install playwright==1.41.2 -t /work/layer/python
-            cd /work/layer
-            zip -9 -r /work/playwright-layer.zip python
+            zip -9 -r /work/playwright-layer.zip /work/layer/python
           '
 
       - name: Build Chromium Lambda layer
@@ -76,10 +75,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-layer
-          path: $GITHUB_WORKSPACE/playwright-layer.zip
+          path: ${{ github.workspace }}/playwright-layer.zip
 
       - name: Upload Chromium layer artifact
         uses: actions/upload-artifact@v4
         with:
           name: chromium-layer
-          path: $GITHUB_WORKSPACE/headless-chrome-layer.zip
+          path: ${{ github.workspace }}/headless-chrome-layer.zip
