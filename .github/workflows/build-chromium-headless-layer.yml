@@ -27,37 +27,37 @@ jobs:
           CHROME_ZIP_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("layer\\.x64\\.zip$")) | .browser_download_url')
           
           echo "Downloading Chromium layer from $CHROME_ZIP_URL"
-          curl -L -o /tmp/chromium.zip "$CHROME_ZIP_URL"
+          curl -L -o $GITHUB_WORKSPACE/chromium.zip "$CHROME_ZIP_URL"
 
       - name: Extract and decompress Chromium + Fonts
         run: |
-          mkdir -p /work/layer/bin /work/layer/fonts
+          mkdir -p $GITHUB_WORKSPACE/layer/bin $GITHUB_WORKSPACE/layer/fonts
 
-          unzip /tmp/chromium.zip -d /tmp/chromium
+          unzip $GITHUB_WORKSPACE/chromium.zip -d $GITHUB_WORKSPACE/tmp_chromium
 
           # Decompress chromium.br
-          CHROME_BR=$(find /tmp/chromium -name "chromium.br" | head -n1)
-          brotli -d "$CHROME_BR" -o /work/layer/bin/chrome
-          chmod +x /work/layer/bin/chrome
+          CHROME_BR=$(find $GITHUB_WORKSPACE/tmp_chromium -name "chromium.br" | head -n1)
+          brotli -d "$CHROME_BR" -o $GITHUB_WORKSPACE/layer/bin/chrome
+          chmod +x $GITHUB_WORKSPACE/layer/bin/chrome
 
           # Decompress fonts.tar.br
-          FONTS_BR=$(find /tmp/chromium -name "fonts.tar.br" | head -n1)
-          brotli -d "$FONTS_BR" -o /work/layer/fonts/fonts.tar
-          tar -xf /work/layer/fonts/fonts.tar -C /work/layer/fonts
-          rm /work/layer/fonts/fonts.tar
+          FONTS_BR=$(find $GITHUB_WORKSPACE/tmp_chromium -name "fonts.tar.br" | head -n1)
+          brotli -d "$FONTS_BR" -o $GITHUB_WORKSPACE/layer/fonts/fonts.tar
+          tar -xf $GITHUB_WORKSPACE/layer/fonts/fonts.tar -C $GITHUB_WORKSPACE/layer/fonts
+          rm $GITHUB_WORKSPACE/layer/fonts/fonts.tar
 
           # Optional: decompress SwiftShader
-          SWIFT_BR=$(find /tmp/chromium -name "swiftshader.tar.br" | head -n1 || true)
+          SWIFT_BR=$(find $GITHUB_WORKSPACE/tmp_chromium -name "swiftshader.tar.br" | head -n1 || true)
           if [ -n "$SWIFT_BR" ]; then
-            mkdir -p /work/layer/swiftshader
-            brotli -d "$SWIFT_BR" -o /work/layer/swiftshader/swiftshader.tar
-            tar -xf /work/layer/swiftshader/swiftshader.tar -C /work/layer/swiftshader
-            rm /work/layer/swiftshader/swiftshader.tar
+            mkdir -p $GITHUB_WORKSPACE/layer/swiftshader
+            brotli -d "$SWIFT_BR" -o $GITHUB_WORKSPACE/layer/swiftshader/swiftshader.tar
+            tar -xf $GITHUB_WORKSPACE/layer/swiftshader/swiftshader.tar -C $GITHUB_WORKSPACE/layer/swiftshader
+            rm $GITHUB_WORKSPACE/layer/swiftshader/swiftshader.tar
           fi
 
       - name: Build Python Playwright Lambda layer
         run: |
-          docker run --rm -v "$PWD:/work" python:3.10-slim bash -c '
+          docker run --rm -v "$GITHUB_WORKSPACE:/work" python:3.10-slim bash -c '
             set -ex
             apt-get update && apt-get install -y zip unzip && apt-get clean
             mkdir -p /work/layer/python
@@ -72,17 +72,17 @@ jobs:
 
       - name: Build Chromium Lambda layer
         run: |
-          cd /work/layer
-          zip -9 -r /work/headless-chrome-layer.zip bin fonts swiftshader || true
+          cd $GITHUB_WORKSPACE/layer
+          zip -9 -r $GITHUB_WORKSPACE/headless-chrome-layer.zip bin fonts swiftshader || true
 
       - name: Upload Playwright layer artifact
         uses: actions/upload-artifact@v4
         with:
           name: playwright-layer
-          path: playwright-layer.zip
+          path: $GITHUB_WORKSPACE/playwright-layer.zip
 
       - name: Upload Chromium layer artifact
         uses: actions/upload-artifact@v4
         with:
           name: chromium-layer
-          path: headless-chrome-layer.zip
+          path: $GITHUB_WORKSPACE/headless-chrome-layer.zip
