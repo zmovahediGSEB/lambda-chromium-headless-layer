@@ -1,4 +1,4 @@
-name: Build Headless Chrome Lambda Layer
+name: Build Playwright Lambda Layer with Headless Chromium
 
 on:
   workflow_dispatch:
@@ -6,50 +6,76 @@ on:
     branches: [ main ]
 
 jobs:
-  build:
+  build-layer:
     runs-on: ubuntu-latest
+
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Checkout repo
-      uses: actions/checkout@v4
+      - name: Build Playwright Lambda layer
+        run: |
+          docker run --rm -v "$PWD:/work" python:3.10-slim bash -c '
+            set -ex
 
-    - name: Build headless Chrome
-      run: |
-        docker run --rm -v "$PWD:/work" amazonlinux:2 bash -ex << 'EOF'
-        
-          # Prepare
-          yum update -y
-          yum install -y \
-            zip unzip tar gzip gcc-c++ make \
-            alsa-lib-devel atk-devel cups-libs gtk3-devel \
-            ipa-gothic-fonts liberation-fonts \
-            libXcomposite-devel libXcursor-devel \
-            libXdamage-devel libXext-devel libXi-devel \
-            libXrandr-devel libXScrnSaver-devel nss \
-            pango-devel
+            # Install Python dependencies
+            python3 -m pip install --upgrade pip
 
-          mkdir -p /work/layer/bin
-          cd /work/layer
+            # Prepare Lambda layer directory
+            mkdir -p /layer/python
 
-          # Download prebuilt headless Chromium (AWS Lambda compatible)
-          CHROME_URL="https://github.com/alixaxel/chrome-aws-lambda/releases/latest/download/chrome-linux.zip"
-          curl -Lo chrome-linux.zip "$CHROME_URL"
-          unzip chrome-linux.zip -d bin
+            # Install Playwright Core only (no extra browsers)
+            python3 -m pip install playwright-core==1.41.2 -t /layer/python
 
-          # Strip binaries to reduce size
-          find bin -type f -executable -exec strip --strip-unneeded {} + || true
+            # Remove unnecessary files to reduce size
+            cd /layer/python
+            rm -rf tests examples docs
+            find . -name "__pycache__" -type d -exec rm -rf {} +
 
-          # Remove unused parts
-          rm -rf bin/chrome-linux/locales \
-                 bin/chrome-linux/swiftshader/icudtl.dat
+            # Zip the Playwright layer
+            cd /layer
+            zip -9 -r /work/playwright-layer.zip .
+          '
 
-          # Create final layer zip
-          cd /work/layer
-          zip -9 -r /work/headless-chrome-layer.zip .
-        EOF
+      - name: Build Headless Chromium Lambda layer
+        run: |
+          docker run --rm -v "$PWD:/work" ubuntu:22.04 bash -c '
+            set -ex
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: headless-chrome-layer
-        path: headless-chrome-layer.zip
+            apt-get update && apt-get install -y curl unzip zip \
+              libx11-6 libxcomposite1 libxcursor1 libxdamage1 libxext6 \
+              libxi6 libxrandr2 libxss1 libxtst6 libcups2 libasound2 \
+              libatk1.0-0 libgtk-3-0 libpango-1.0-0 libgl1 libnss3 fonts-dejavu-core \
+              && apt-get clean
+
+            # Prepare Lambda layer folder
+            mkdir -p /layer/bin
+
+            # Download prebuilt minimal Chrome for AWS Lambda
+            CHROME_URL="https://github.com/alixaxel/chrome-aws-lambda/releases/latest/download/chrome-linux.zip"
+            curl -Lo /tmp/chrome-linux.zip "$CHROME_URL"
+            unzip /tmp/chrome-linux.zip -d /layer/bin
+
+            # Strip binaries to reduce size
+            find /layer/bin -type f -executable -exec strip --strip-unneeded {} + || true
+
+            # Remove unused files
+            rm -rf /layer/bin/chrome-linux/locales
+            rm -rf /layer/bin/chrome-linux/swiftshader/icudtl.dat
+
+            # Zip the headless Chromium layer
+            cd /layer
+            zip -9 -r /work/headless-chrome-layer.zip .
+          '
+
+      - name: Upload Playwright layer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-lambda-layer
+          path: playwright-layer.zip
+
+      - name: Upload Headless Chromium layer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: headless-chrome-lambda-layer
+          path: headless-chrome-layer.zip
