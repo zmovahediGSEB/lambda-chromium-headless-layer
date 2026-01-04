@@ -49,6 +49,7 @@ jobs:
             apt-get update && apt-get install -y zip && apt-get clean
             mkdir -p /work/layer/python
             python3 -m pip install playwright==1.41.2 -t /work/layer/python
+            export PYTHONPATH=/work/layer/python
             python3 -m playwright install chromium
             rm -rf /root/.cache/ms-playwright
             cd /work/layer
