@@ -1,4 +1,4 @@
-name: Build Python Playwright + Chromium Lambda Layer
+name: Build Python Playwright + Chromium Lambda Layers
 
 on:
   workflow_dispatch:
@@ -6,79 +6,68 @@ on:
     branches: [ main ]
 
 jobs:
-  build-layer:
+  build-layers:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install system dependencies
+      - name: Install system tools
         run: |
           sudo apt-get update
           sudo apt-get install -y unzip brotli zip curl jq tar
 
       - name: Download latest Sparticuz Chromium release
         run: |
-          # Get latest release info from GitHub API
           RELEASE_JSON=$(curl -s https://api.github.com/repos/Sparticuz/chromium/releases/latest)
-          
-          # Extract download URL for x64 ZIP layer
           CHROME_ZIP_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("layer\\.x64\\.zip$")) | .browser_download_url')
-          
-          echo "Downloading Chromium layer from $CHROME_ZIP_URL"
-          curl -L -o $GITHUB_WORKSPACE/chromium.zip "$CHROME_ZIP_URL"
+          curl -L -o chromium.zip "$CHROME_ZIP_URL"
 
-      - name: Extract and decompress Chromium + Fonts
+      - name: Extract and decompress Chromium
         run: |
-          mkdir -p $GITHUB_WORKSPACE/layer/bin $GITHUB_WORKSPACE/layer/fonts
+          mkdir -p layer/bin layer/fonts layer/swiftshader
+          unzip chromium.zip -d tmp_chromium
 
-          unzip $GITHUB_WORKSPACE/chromium.zip -d $GITHUB_WORKSPACE/tmp_chromium
+          brotli -d $(find tmp_chromium -name chromium.br | head -n1) -o layer/bin/chrome
+          chmod +x layer/bin/chrome
 
-          # Decompress chromium.br
-          CHROME_BR=$(find $GITHUB_WORKSPACE/tmp_chromium -name "chromium.br" | head -n1)
-          brotli -d "$CHROME_BR" -o $GITHUB_WORKSPACE/layer/bin/chrome
-          chmod +x $GITHUB_WORKSPACE/layer/bin/chrome
+          brotli -d $(find tmp_chromium -name fonts.tar.br | head -n1) -o fonts.tar
+          tar -xf fonts.tar -C layer/fonts
+          rm fonts.tar
 
-          # Decompress fonts.tar.br
-          FONTS_BR=$(find $GITHUB_WORKSPACE/tmp_chromium -name "fonts.tar.br" | head -n1)
-          brotli -d "$FONTS_BR" -o $GITHUB_WORKSPACE/layer/fonts/fonts.tar
-          tar -xf $GITHUB_WORKSPACE/layer/fonts/fonts.tar -C $GITHUB_WORKSPACE/layer/fonts
-          rm $GITHUB_WORKSPACE/layer/fonts/fonts.tar
-
-          # Optional: decompress SwiftShader
-          SWIFT_BR=$(find $GITHUB_WORKSPACE/tmp_chromium -name "swiftshader.tar.br" | head -n1 || true)
-          if [ -n "$SWIFT_BR" ]; then
-            mkdir -p $GITHUB_WORKSPACE/layer/swiftshader
-            brotli -d "$SWIFT_BR" -o $GITHUB_WORKSPACE/layer/swiftshader/swiftshader.tar
-            tar -xf $GITHUB_WORKSPACE/layer/swiftshader/swiftshader.tar -C $GITHUB_WORKSPACE/layer/swiftshader
-            rm $GITHUB_WORKSPACE/layer/swiftshader/swiftshader.tar
+          if find tmp_chromium -name swiftshader.tar.br | grep -q .; then
+            brotli -d $(find tmp_chromium -name swiftshader.tar.br | head -n1) -o swiftshader.tar
+            tar -xf swiftshader.tar -C layer/swiftshader
+            rm swiftshader.tar
           fi
 
-      - name: Build Python Playwright Lambda layer
+      - name: Build Playwright Python layer
         run: |
-          docker run --rm -v "$GITHUB_WORKSPACE:/work" python:3.10-slim bash -c '
+          docker run --rm -v "$PWD:/work" python:3.10-slim bash -c '
             set -ex
-            apt-get update && apt-get install -y zip unzip && apt-get clean
+            apt-get update && apt-get install -y zip && apt-get clean
             mkdir -p /work/layer/python
-            python3 -m pip install --upgrade pip
             python3 -m pip install playwright==1.41.2 -t /work/layer/python
-            zip -9 -r /work/playwright-layer.zip /work/layer/python
+            python3 -m playwright install chromium
+            rm -rf /root/.cache/ms-playwright
+            cd /work/layer
+            zip -9 -r /work/playwright-layer.zip python
           '
 
-      - name: Build Chromium Lambda layer
+      - name: Build Chromium layer
         run: |
-          cd $GITHUB_WORKSPACE/layer
-          zip -9 -r $GITHUB_WORKSPACE/headless-chrome-layer.zip bin fonts swiftshader || true
+          cd layer
+          zip -9 -r ../headless-chrome-layer.zip bin fonts swiftshader
 
-      - name: Upload Playwright layer artifact
+      - name: Upload Playwright layer
         uses: actions/upload-artifact@v4
         with:
           name: playwright-layer
-          path: ${{ github.workspace }}/playwright-layer.zip
+          path: playwright-layer.zip
 
-      - name: Upload Chromium layer artifact
+      - name: Upload Chromium layer
         uses: actions/upload-artifact@v4
         with:
           name: chromium-layer
-          path: ${{ github.workspace }}/headless-chrome-layer.zip
+          path: headless-chrome-layer.zip
