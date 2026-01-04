@@ -1,4 +1,4 @@
-name: Build Python Playwright + Chromium Lambda Layers
+name: Build Playwright + Chromium Lambda Layers
 
 on:
   workflow_dispatch:
@@ -10,64 +10,88 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install system tools
+      # ------------------------------------------------------------
+      # Install host tools (GitHub runner)
+      # ------------------------------------------------------------
+      - name: Install host dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y unzip brotli zip curl jq tar
+          sudo apt-get install -y curl jq unzip brotli tar zip
 
-      - name: Download latest Sparticuz Chromium release
+      # ------------------------------------------------------------
+      # Download Sparticuz Chromium (Lambda-compatible)
+      # ------------------------------------------------------------
+      - name: Download Sparticuz Chromium layer
         run: |
           RELEASE_JSON=$(curl -s https://api.github.com/repos/Sparticuz/chromium/releases/latest)
-          CHROME_ZIP_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("layer\\.x64\\.zip$")) | .browser_download_url')
-          curl -L -o chromium.zip "$CHROME_ZIP_URL"
+          CHROME_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("layer\\.x64\\.zip$")) | .browser_download_url')
 
-      - name: Extract and decompress Chromium
+          echo "Chromium URL: $CHROME_URL"
+          curl -L -o chromium-layer.zip "$CHROME_URL"
+
+      # ------------------------------------------------------------
+      # Extract & prepare Chromium layer
+      # ------------------------------------------------------------
+      - name: Build Chromium Lambda layer
         run: |
-          mkdir -p layer/bin layer/fonts layer/swiftshader
-          unzip chromium.zip -d tmp_chromium
+          mkdir -p chromium-layer/bin chromium-layer/fonts chromium-layer/swiftshader
+          unzip chromium-layer.zip -d chromium_tmp
 
-          brotli -d $(find tmp_chromium -name chromium.br | head -n1) -o layer/bin/chrome
-          chmod +x layer/bin/chrome
+          # Chromium binary
+          brotli -d $(find chromium_tmp -name chromium.br | head -n1) -o chromium-layer/bin/chrome
+          chmod +x chromium-layer/bin/chrome
 
-          brotli -d $(find tmp_chromium -name fonts.tar.br | head -n1) -o fonts.tar
-          tar -xf fonts.tar -C layer/fonts
+          # Fonts
+          brotli -d $(find chromium_tmp -name fonts.tar.br | head -n1) -o fonts.tar
+          tar -xf fonts.tar -C chromium-layer/fonts
           rm fonts.tar
 
-          if find tmp_chromium -name swiftshader.tar.br | grep -q .; then
-            brotli -d $(find tmp_chromium -name swiftshader.tar.br | head -n1) -o swiftshader.tar
-            tar -xf swiftshader.tar -C layer/swiftshader
+          # SwiftShader (optional but recommended)
+          if find chromium_tmp -name swiftshader.tar.br | grep -q .; then
+            brotli -d $(find chromium_tmp -name swiftshader.tar.br | head -n1) -o swiftshader.tar
+            tar -xf swiftshader.tar -C chromium-layer/swiftshader
             rm swiftshader.tar
           fi
 
-      - name: Build Playwright Python layer (Amazon Linux 2)
+          cd chromium-layer
+          zip -9 -r ../headless-chrome-layer.zip bin fonts swiftshader
+
+      # ------------------------------------------------------------
+      # Build Playwright Python layer (Amazon Linux 2!)
+      # ------------------------------------------------------------
+      - name: Build Playwright Python layer (Lambda compatible)
         run: |
           docker run --rm -v "$PWD:/work" public.ecr.aws/sam/build-python3.10 bash -c '
             set -ex
-      
+
+            cat /etc/os-release
+
             yum install -y zip
-            mkdir -p /work/layer/python
-      
+
+            mkdir -p /work/playwright-layer/python
+
             python3 -m pip install --upgrade pip
-            python3 -m pip install playwright==1.41.2 -t /work/layer/python
-      
-            export PYTHONPATH=/work/layer/python
+            python3 -m pip install playwright==1.41.2 -t /work/playwright-layer/python
+
+            # Make Playwright visible
+            export PYTHONPATH=/work/playwright-layer/python
+
+            # Install Playwright driver (browser will be deleted)
             python3 -m playwright install chromium
-      
-            # Remove browser, keep driver
+
+            # Remove downloaded browser, keep driver
             rm -rf /root/.cache/ms-playwright
-      
-            cd /work/layer
+
+            cd /work/playwright-layer
             zip -9 -r /work/playwright-layer.zip python
           '
 
-      - name: Build Chromium layer
-        run: |
-          cd layer
-          zip -9 -r ../headless-chrome-layer.zip bin fonts swiftshader
-
+      # ------------------------------------------------------------
+      # Upload artifacts
+      # ------------------------------------------------------------
       - name: Upload Playwright layer
         uses: actions/upload-artifact@v4
         with:
