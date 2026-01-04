@@ -59,35 +59,35 @@ jobs:
           cd chromium-layer
           zip -9 -r ../headless-chrome-layer.zip bin fonts swiftshader
 
-      # ------------------------------------------------------------
-      # Build Playwright Python layer (Amazon Linux 2!)
-      # ------------------------------------------------------------
-      - name: Build Playwright Python layer (Lambda compatible)
+      - name: Build Playwright Python layer (Amazon Linux 2)
         run: |
-          docker run --rm -v "$PWD:/work" public.ecr.aws/sam/build-python3.10 bash -c '
+          docker run --rm -v "$PWD:/work" amazonlinux:2 bash -c '
             set -ex
-
+      
             cat /etc/os-release
-
-            yum install -y zip
-
+      
+            # Enable Python 3.10
+            yum install -y amazon-linux-extras
+            amazon-linux-extras enable python3.10
+            yum clean metadata
+            yum install -y python3.10 python3.10-pip zip
+      
+            python3.10 -m pip install --upgrade pip
+      
             mkdir -p /work/playwright-layer/python
-
-            python3 -m pip install --upgrade pip
-            python3 -m pip install playwright==1.39.0 -t /work/playwright-layer/python
-
-            # Make Playwright visible
+      
+            python3.10 -m pip install playwright==1.39.0 -t /work/playwright-layer/python
+      
             export PYTHONPATH=/work/playwright-layer/python
-
-            # Install Playwright driver (browser will be deleted)
-            python3 -m playwright install chromium
-
-            # Remove downloaded browser, keep driver
+            python3.10 -m playwright install chromium
+      
+            # Remove browser binaries, keep driver
             rm -rf /root/.cache/ms-playwright
-
+      
             cd /work/playwright-layer
             zip -9 -r /work/playwright-layer.zip python
           '
+
 
       # ------------------------------------------------------------
       # Upload artifacts
