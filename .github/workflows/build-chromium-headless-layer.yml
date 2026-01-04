@@ -61,28 +61,28 @@ jobs:
 
       - name: Build Playwright Python layer (Lambda Python 3.10)
         run: |
-            docker run --rm -v "$PWD:/work" public.ecr.aws/lambda/python:3.10 bash -c '
-              set -ex
-        
-              cat /etc/os-release
-              python --version
-        
-              yum install -y zip
-        
-              mkdir -p /work/playwright-layer/python
-        
-              pip install --upgrade pip
-              pip install playwright==1.39.0 -t /work/playwright-layer/python
-        
-              export PYTHONPATH=/work/playwright-layer/python
-              python -m playwright install chromium
-        
-              # Remove browser binaries, keep driver
-              rm -rf /root/.cache/ms-playwright
-        
-              cd /work/playwright-layer
-              zip -9 -r /work/playwright-layer.zip python
-            '
+          docker run --rm -v "$PWD:/work" --entrypoint /bin/bash public.ecr.aws/lambda/python:3.10 -c '
+            set -ex
+      
+            cat /etc/os-release
+            python --version
+      
+            yum install -y zip
+      
+            mkdir -p /work/playwright-layer/python
+      
+            pip install --upgrade pip
+            pip install playwright==1.39.0 -t /work/playwright-layer/python
+      
+            export PYTHONPATH=/work/playwright-layer/python
+            python -m playwright install chromium
+      
+            # Remove browser binaries, keep driver
+            rm -rf /root/.cache/ms-playwright
+      
+            cd /work/playwright-layer
+            zip -9 -r /work/playwright-layer.zip python
+          '
 
       # ------------------------------------------------------------
       # Upload artifacts
