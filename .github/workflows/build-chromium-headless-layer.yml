@@ -42,16 +42,23 @@ jobs:
             rm swiftshader.tar
           fi
 
-      - name: Build Playwright Python layer
+      - name: Build Playwright Python layer (Amazon Linux 2)
         run: |
-          docker run --rm -v "$PWD:/work" python:3.10-slim bash -c '
+          docker run --rm -v "$PWD:/work" public.ecr.aws/sam/build-python3.10 bash -c '
             set -ex
-            apt-get update && apt-get install -y zip && apt-get clean
+      
+            yum install -y zip
             mkdir -p /work/layer/python
+      
+            python3 -m pip install --upgrade pip
             python3 -m pip install playwright==1.41.2 -t /work/layer/python
+      
             export PYTHONPATH=/work/layer/python
             python3 -m playwright install chromium
+      
+            # Remove browser, keep driver
             rm -rf /root/.cache/ms-playwright
+      
             cd /work/layer
             zip -9 -r /work/playwright-layer.zip python
           '
